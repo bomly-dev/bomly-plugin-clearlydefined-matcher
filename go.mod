@@ -1,4 +1,4 @@
-module github.com/bomly-dev/bomly-plugin-clearlydefined-license
+module github.com/bomly-dev/bomly-plugin-clearlydefined-matcher
 
 go 1.26.3
 

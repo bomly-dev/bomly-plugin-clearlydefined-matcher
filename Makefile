@@ -1,6 +1,6 @@
 .PHONY: build test package
 
-BINARY ?= bomly-plugin-clearlydefined-license
+BINARY ?= bomly-plugin-clearlydefined-matcher
 
 build:
 	go build -o bin/$(BINARY) .

@@ -43,7 +43,7 @@ func (m *matcher) Metadata(context.Context) (*sdk.PluginMetadata, error) {
 		Kind:             sdk.PluginKindMatcher,
 		PluginAPIVersion: sdk.PluginAPIVersion,
 		Description:      "External matcher plugin that enriches package license data from ClearlyDefined.",
-		Homepage:         "https://github.com/bomly-dev/bomly-plugin-clearlydefined-license",
+		Homepage:         "https://github.com/bomly-dev/bomly-plugin-clearlydefined-matcher",
 		License:          "Apache-2.0",
 	}, nil
 }

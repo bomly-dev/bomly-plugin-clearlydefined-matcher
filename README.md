@@ -6,13 +6,13 @@ External Bomly matcher plugin for [ClearlyDefined](https://clearlydefined.io) li
 
 ```bash
 go test ./...
-go build -o bin/bomly-plugin-clearlydefined-license .
+go build -o bin/bomly-plugin-clearlydefined-matcher .
 ```
 
 ## Install for local development
 
 ```bash
-bomly plugin install ./bin/bomly-plugin-clearlydefined-license --dev
+bomly plugin install ./bin/bomly-plugin-clearlydefined-matcher --dev
 bomly plugin enable clearlydefined-license-matcher
 bomly scan --enrich --matchers +clearlydefined
 ```
@@ -20,14 +20,14 @@ bomly scan --enrich --matchers +clearlydefined
 ## Install from an archive
 
 ```bash
-bomly plugin install ./dist/bomly-plugin-clearlydefined-license_linux_amd64.tar.gz
+bomly plugin install ./dist/bomly-plugin-clearlydefined-matcher_linux_amd64.tar.gz
 bomly plugin enable clearlydefined-license-matcher
 ```
 
 Direct URL installs require a checksum unless you explicitly opt out:
 
 ```bash
-bomly plugin install https://example.internal/bomly-plugin-clearlydefined-license_linux_amd64.tar.gz \
+bomly plugin install https://example.internal/bomly-plugin-clearlydefined-matcher_linux_amd64.tar.gz \
   --checksum sha256:<digest>
 ```
 
@@ -35,7 +35,7 @@ bomly plugin install https://example.internal/bomly-plugin-clearlydefined-licens
 
 ```bash
 export BOMLY_GITHUB_TOKEN=<token-with-release-access>
-bomly plugin install github:bomly-dev/bomly-plugin-clearlydefined-license@v0.1.0
+bomly plugin install github:bomly-dev/bomly-plugin-clearlydefined-matcher@v0.1.0
 bomly plugin enable clearlydefined-license-matcher
 ```
 
