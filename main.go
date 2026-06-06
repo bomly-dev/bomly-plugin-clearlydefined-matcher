@@ -77,7 +77,7 @@ func (m *matcher) Applicable(_ context.Context, req *sdk.MatchRequest) (*sdk.App
 
 func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchResponse, error) {
 	if req.Registry == nil {
-		return matchResponse(req.Registry, 0), nil
+		return matchResponse(req.Registry, 0, 0, 0), nil
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -89,41 +89,51 @@ func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchR
 	}
 	cache := newFileCache(cfg.CacheDir, cfg.CacheTTL, cfg.DisableCache)
 	matchedPackages := 0
+	licenses := 0
+	unmatchedPackages := 0
 	for _, pkg := range req.Registry.All() {
 		if pkg == nil || len(pkg.Licenses) > 0 {
 			continue
 		}
 		coordinate, ok := coordinateFromPackage(pkg)
 		if !ok {
+			unmatchedPackages++
 			continue
 		}
 		if values, ok := cache.get(coordinate); ok {
-			if applyLicenses(pkg, values) {
+			if count := applyLicenses(pkg, values); count > 0 {
 				matchedPackages++
+				licenses += count
+			} else {
+				unmatchedPackages++
 			}
 			continue
 		}
 		values, err := fetchDefinition(ctx, client, cfg.APIBase, coordinate)
 		if err != nil {
-			return matchResponse(req.Registry, matchedPackages), err
+			return matchResponse(req.Registry, matchedPackages, unmatchedPackages, licenses), err
 		}
 		_ = cache.set(coordinate, values)
-		if applyLicenses(pkg, values) {
+		if count := applyLicenses(pkg, values); count > 0 {
 			matchedPackages++
+			licenses += count
+		} else {
+			unmatchedPackages++
 		}
 	}
-	return matchResponse(req.Registry, matchedPackages), nil
+	return matchResponse(req.Registry, matchedPackages, unmatchedPackages, licenses), nil
 }
 
-func matchResponse(registry *sdk.PackageRegistry, matchedPackages int) *sdk.MatchResponse {
+func matchResponse(registry *sdk.PackageRegistry, matchedPackages, unmatchedPackages, licenses int) *sdk.MatchResponse {
 	return &sdk.MatchResponse{
-		Registry:    registry,
-		MatcherRuns: []string{matcherName},
-		MatcherRunDetails: []sdk.MatcherRun{{
-			Name:            matcherName,
-			DisplayName:     "ClearlyDefined License Matcher",
-			MatchedPackages: matchedPackages,
-		}},
+		Registry: registry,
+		MatcherStats: sdk.MatcherStats{
+			Name:              matcherName,
+			DisplayName:       "ClearlyDefined License Matcher",
+			MatchedPackages:   matchedPackages,
+			UnmatchedPackages: unmatchedPackages,
+			Licenses:          licenses,
+		},
 	}
 }
 
@@ -190,10 +200,10 @@ func fetchDefinition(ctx context.Context, client *http.Client, apiBase, coordina
 	return definition.licenseValues(), nil
 }
 
-func applyLicenses(pkg *sdk.Package, values []string) bool {
+func applyLicenses(pkg *sdk.Package, values []string) int {
 	values = normalizeLicenseSet(values)
 	if pkg == nil || len(pkg.Licenses) > 0 || len(values) == 0 {
-		return false
+		return 0
 	}
 	licenses := make([]sdk.PackageLicense, 0, len(values))
 	for _, value := range values {
@@ -201,7 +211,7 @@ func applyLicenses(pkg *sdk.Package, values []string) bool {
 	}
 	pkg.Licenses = licenses
 	pkg.Matched = true
-	return true
+	return len(licenses)
 }
 
 func normalizeLicenseSet(values []string) []string {
