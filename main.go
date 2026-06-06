@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	matcherName     = "clearlydefined-license-checker"
+	matcherName     = "clearlydefined-license-matcher"
 	pluginVersion   = "0.1.0"
 	sourceType      = "external-clearlydefined"
 	defaultAPIBase  = "https://api.clearlydefined.io"
@@ -38,7 +38,7 @@ type config struct {
 func (m *matcher) Metadata(context.Context) (*sdk.PluginMetadata, error) {
 	return &sdk.PluginMetadata{
 		ID:               matcherName,
-		Name:             "ClearlyDefined License Checker",
+		Name:             "ClearlyDefined License Matcher",
 		Version:          pluginVersion,
 		Kind:             sdk.PluginKindMatcher,
 		PluginAPIVersion: sdk.PluginAPIVersion,
@@ -51,6 +51,8 @@ func (m *matcher) Metadata(context.Context) (*sdk.PluginMetadata, error) {
 func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 	return &sdk.MatcherDescriptor{
 		Name:         matcherName,
+		DisplayName:  "ClearlyDefined License Matcher",
+		Aliases:      []string{"clearlydefined"},
 		Enabled:      false,
 		Origin:       sdk.ExternalOrigin,
 		Priority:     90,
@@ -75,7 +77,7 @@ func (m *matcher) Applicable(_ context.Context, req *sdk.MatchRequest) (*sdk.App
 
 func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchResponse, error) {
 	if req.Registry == nil {
-		return &sdk.MatchResponse{Registry: req.Registry, MatcherRuns: []string{matcherName}}, nil
+		return matchResponse(req.Registry, 0), nil
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -86,6 +88,7 @@ func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchR
 		return nil, err
 	}
 	cache := newFileCache(cfg.CacheDir, cfg.CacheTTL, cfg.DisableCache)
+	matchedPackages := 0
 	for _, pkg := range req.Registry.All() {
 		if pkg == nil || len(pkg.Licenses) > 0 {
 			continue
@@ -95,17 +98,33 @@ func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchR
 			continue
 		}
 		if values, ok := cache.get(coordinate); ok {
-			applyLicenses(pkg, values)
+			if applyLicenses(pkg, values) {
+				matchedPackages++
+			}
 			continue
 		}
 		values, err := fetchDefinition(ctx, client, cfg.APIBase, coordinate)
 		if err != nil {
-			return &sdk.MatchResponse{Registry: req.Registry, MatcherRuns: []string{matcherName}}, err
+			return matchResponse(req.Registry, matchedPackages), err
 		}
 		_ = cache.set(coordinate, values)
-		applyLicenses(pkg, values)
+		if applyLicenses(pkg, values) {
+			matchedPackages++
+		}
 	}
-	return &sdk.MatchResponse{Registry: req.Registry, MatcherRuns: []string{matcherName}}, nil
+	return matchResponse(req.Registry, matchedPackages), nil
+}
+
+func matchResponse(registry *sdk.PackageRegistry, matchedPackages int) *sdk.MatchResponse {
+	return &sdk.MatchResponse{
+		Registry:    registry,
+		MatcherRuns: []string{matcherName},
+		MatcherRunDetails: []sdk.MatcherRun{{
+			Name:            matcherName,
+			DisplayName:     "ClearlyDefined License Matcher",
+			MatchedPackages: matchedPackages,
+		}},
+	}
 }
 
 func loadConfig() (config, error) {

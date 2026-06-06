@@ -1,7 +1,7 @@
 {
   "schemaVersion": "bomly.plugin.package.v1",
-  "id": "clearlydefined-license-checker",
-  "name": "ClearlyDefined License Checker",
+  "id": "clearlydefined-license-matcher",
+  "name": "ClearlyDefined License Matcher",
   "version": "0.1.0",
   "kind": "matcher",
   "runtime": "hashicorp-grpc",
@@ -13,7 +13,11 @@
     "windows/amd64": "bin/bomly-plugin-clearlydefined-license.exe"
   },
   "matcherDescriptor": {
-    "name": "clearlydefined-license-checker",
+    "name": "clearlydefined-license-matcher",
+    "displayName": "ClearlyDefined License Matcher",
+    "aliases": [
+      "clearlydefined"
+    ],
     "enabled": false,
     "origin": "external",
     "priority": 90,
