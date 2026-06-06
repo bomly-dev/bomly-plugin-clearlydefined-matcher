@@ -1,0 +1,57 @@
+# ClearlyDefined License Matcher Plugin
+
+External Bomly matcher plugin for [ClearlyDefined](https://clearlydefined.io) license metadata. This plugin carries the matcher ID `clearlydefined-license-checker`, so existing matcher selectors can keep using that name after the plugin is installed and enabled.
+
+## Build and test
+
+```bash
+go test ./...
+go build -o bin/bomly-plugin-clearlydefined-license .
+```
+
+## Install for local development
+
+```bash
+bomly plugin install ./bin/bomly-plugin-clearlydefined-license --dev
+bomly plugin enable clearlydefined-license-checker
+bomly scan --enrich --matchers +clearlydefined-license-checker
+```
+
+## Install from an archive
+
+```bash
+bomly plugin install ./dist/bomly-plugin-clearlydefined-license_linux_amd64.tar.gz
+bomly plugin enable clearlydefined-license-checker
+```
+
+Direct URL installs require a checksum unless you explicitly opt out:
+
+```bash
+bomly plugin install https://example.internal/bomly-plugin-clearlydefined-license_linux_amd64.tar.gz \
+  --checksum sha256:<digest>
+```
+
+## Install from a private GitHub Release
+
+```bash
+export BOMLY_GITHUB_TOKEN=<token-with-release-access>
+bomly plugin install github:bomly-dev/bomly-plugin-clearlydefined-license@v0.1.0
+bomly plugin enable clearlydefined-license-checker
+```
+
+`GITHUB_TOKEN`, `GH_TOKEN`, and `GITHUB_AUTH_TOKEN` are also accepted by Bomly for private release metadata and asset downloads.
+
+## Configuration
+
+Configure the plugin in Bomly's plugin config map:
+
+```yaml
+plugins:
+  clearlydefined-license-checker:
+    api_base: https://api.clearlydefined.io
+    cache_dir: ~/.bomly/cache/licenses/clearlydefined
+    cache_ttl: 24h
+    disable_cache: false
+```
+
+The plugin honors Bomly's proxy environment passed to external plugins.

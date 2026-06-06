@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "bomly.plugin.package.v1",
+  "id": "clearlydefined-license-checker",
+  "name": "ClearlyDefined License Checker",
+  "version": "0.1.0",
+  "kind": "matcher",
+  "runtime": "hashicorp-grpc",
+  "pluginApiVersion": "bomly.plugin.v1",
+  "bomlyVersion": ">=0.1.0",
+  "entrypoint": {
+    "linux/amd64": "bin/bomly-plugin-clearlydefined-license",
+    "darwin/arm64": "bin/bomly-plugin-clearlydefined-license",
+    "windows/amd64": "bin/bomly-plugin-clearlydefined-license.exe"
+  },
+  "matcherDescriptor": {
+    "name": "clearlydefined-license-checker",
+    "enabled": false,
+    "origin": "external",
+    "priority": 90,
+    "capabilities": [
+      "license-enrichment",
+      "http",
+      "cache"
+    ]
+  },
+  "source": "github:bomly-dev/bomly-plugin-clearlydefined-license@v0.1.0",
+  "homepage": "https://github.com/bomly-dev/bomly-plugin-clearlydefined-license",
+  "license": "Apache-2.0",
+  "description": "External matcher plugin that enriches package license data from ClearlyDefined."
+}

@@ -1,0 +1,5 @@
+bin/
+dist/
+*.exe
+*.tar.gz
+*.zip
