@@ -18,10 +18,7 @@
     "aliases": [
       "clearlydefined"
     ],
-    "enabled": false,
-    "origin": "external",
-    "priority": 90,
-    "capabilities": [
+    "tags": [
       "license-enrichment",
       "http",
       "cache"
