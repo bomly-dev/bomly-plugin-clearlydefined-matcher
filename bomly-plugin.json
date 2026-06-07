@@ -12,22 +12,7 @@
     "darwin/arm64": "bin/bomly-plugin-clearlydefined-matcher",
     "windows/amd64": "bin/bomly-plugin-clearlydefined-matcher.exe"
   },
-  "matcherDescriptor": {
-    "name": "clearlydefined-license-matcher",
-    "displayName": "ClearlyDefined License Matcher",
-    "aliases": [
-      "clearlydefined"
-    ],
-    "enabled": false,
-    "origin": "external",
-    "priority": 90,
-    "capabilities": [
-      "license-enrichment",
-      "http",
-      "cache"
-    ]
-  },
-  "source": "github:bomly-dev/bomly-plugin-clearlydefined-matcher@v0.1.1",
+  "source": "github:bomly-dev/bomly-plugin-clearlydefined-matcher@v0.1.0",
   "homepage": "https://github.com/bomly-dev/bomly-plugin-clearlydefined-matcher",
   "license": "Apache-2.0",
   "description": "External matcher plugin that enriches package license data from ClearlyDefined."

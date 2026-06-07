@@ -20,7 +20,6 @@ import (
 
 const (
 	matcherName     = "clearlydefined-license-matcher"
-	pluginVersion   = "0.1.0"
 	sourceType      = "external-clearlydefined"
 	defaultAPIBase  = "https://api.clearlydefined.io"
 	defaultCacheTTL = 24 * time.Hour
@@ -35,28 +34,12 @@ type config struct {
 	DisableCache bool   `json:"disable_cache"`
 }
 
-func (m *matcher) Metadata(context.Context) (*sdk.PluginMetadata, error) {
-	return &sdk.PluginMetadata{
-		ID:               matcherName,
-		Name:             "ClearlyDefined License Matcher",
-		Version:          pluginVersion,
-		Kind:             sdk.PluginKindMatcher,
-		PluginAPIVersion: sdk.PluginAPIVersion,
-		Description:      "External matcher plugin that enriches package license data from ClearlyDefined.",
-		Homepage:         "https://github.com/bomly-dev/bomly-plugin-clearlydefined-matcher",
-		License:          "Apache-2.0",
-	}, nil
-}
-
 func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 	return &sdk.MatcherDescriptor{
-		Name:         matcherName,
-		DisplayName:  "ClearlyDefined License Matcher",
-		Aliases:      []string{"clearlydefined"},
-		Enabled:      false,
-		Origin:       sdk.ExternalOrigin,
-		Priority:     90,
-		Capabilities: []string{"license-enrichment", "http", "cache"},
+		Name:        matcherName,
+		DisplayName: "ClearlyDefined License Matcher",
+		Aliases:     []string{"clearlydefined"},
+		Tags:        []string{"license-enrichment", "http", "cache"},
 	}, nil
 }
 
