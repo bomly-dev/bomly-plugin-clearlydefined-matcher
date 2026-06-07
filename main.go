@@ -34,14 +34,6 @@ type config struct {
 	DisableCache bool   `json:"disable_cache"`
 }
 
-func (m *matcher) Metadata(context.Context) (*sdk.PluginMetadata, error) {
-	return &sdk.PluginMetadata{
-		ID:               matcherName,
-		Kind:             sdk.PluginKindMatcher,
-		PluginAPIVersion: sdk.PluginAPIVersion,
-	}, nil
-}
-
 func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 	return &sdk.MatcherDescriptor{
 		Name:        matcherName,
