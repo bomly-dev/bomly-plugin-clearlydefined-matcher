@@ -234,7 +234,7 @@ func coordinateFromGraphPackage(pkg *sdk.Package) (string, bool) {
 	if name == "" || version == "" {
 		return "", false
 	}
-	switch strings.ToLower(strings.TrimSpace(pkg.Ecosystem)) {
+	switch strings.ToLower(strings.TrimSpace(string(pkg.Ecosystem))) {
 	case "php":
 		namespace := firstNonEmpty(org, "-")
 		return "composer/packagist/" + escapeSegment(namespace) + "/" + escapeSegment(name) + "/" + escapeSegment(version), true

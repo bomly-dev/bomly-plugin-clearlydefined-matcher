@@ -13,7 +13,7 @@ import (
 )
 
 func TestCoordinateFromPURL(t *testing.T) {
-	pkg := &sdk.Package{PURL: "pkg:composer/acme/widget@1.2.3", Version: "1.2.3"}
+	pkg := &sdk.Package{Coordinates: sdk.Coordinates{PURL: "pkg:composer/acme/widget@1.2.3", Version: "1.2.3"}}
 	got, ok := coordinateFromPackage(pkg)
 	if !ok {
 		t.Fatal("expected coordinate")
@@ -41,7 +41,7 @@ func TestMatchFetchesLicense(t *testing.T) {
 	t.Setenv(sdk.EnvPluginConfigFile, configPath)
 
 	registry := sdk.NewPackageRegistry()
-	registry.Add(&sdk.Package{PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: "php"})
+	registry.Add(&sdk.Package{Coordinates: sdk.Coordinates{PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: sdk.EcosystemPHP}})
 	resp, err := (&matcher{}).Match(context.Background(), &sdk.MatchRequest{Registry: registry, Graph: sdk.New()})
 	if err != nil {
 		t.Fatalf("Match() error = %v", err)
