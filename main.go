@@ -44,9 +44,8 @@ func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 }
 
 func (m *matcher) Ready(context.Context, *sdk.MatchRequest) (*sdk.ReadyResponse, error) {
-	_, err := loadConfig()
-	if err != nil {
-		return nil, err
+	if _, err := loadConfig(); err != nil {
+		return &sdk.ReadyResponse{Reason: "invalid clearlydefined matcher configuration: " + err.Error()}, nil
 	}
 	return &sdk.ReadyResponse{Ready: true}, nil
 }
