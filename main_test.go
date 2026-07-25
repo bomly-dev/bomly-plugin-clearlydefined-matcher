@@ -75,11 +75,16 @@ func TestSupportedEcosystemsMatchCoordinateMapping(t *testing.T) {
 
 	candidates := []sdk.Ecosystem{
 		sdk.EcosystemPHP, sdk.EcosystemDPKG, sdk.EcosystemSwift, sdk.EcosystemNPM,
-		sdk.EcosystemMaven, sdk.EcosystemGo, sdk.EcosystemPython, sdk.EcosystemRust,
-		sdk.EcosystemRuby, sdk.EcosystemDotNet, sdk.EcosystemDart, sdk.EcosystemElixir,
+		sdk.EcosystemMaven, sdk.EcosystemScala, sdk.EcosystemGo, sdk.EcosystemPython,
+		sdk.EcosystemRust, sdk.EcosystemRuby, sdk.EcosystemDotNet, sdk.EcosystemDart,
+		sdk.EcosystemElixir, sdk.EcosystemHaskell,
 	}
 	for _, eco := range candidates {
-		pkg := &sdk.Package{Coordinates: sdk.Coordinates{Ecosystem: eco, Name: "example", Version: "1.0.0"}}
+		// Maven coordinates need a groupId, so give every candidate an Org and
+		// let the mapping decide whether it uses one.
+		pkg := &sdk.Package{Coordinates: sdk.Coordinates{
+			Ecosystem: eco, Org: "com.example", Name: "example", Version: "1.0.0",
+		}}
 		_, mappable := coordinateFromGraphPackage(pkg)
 		if mappable && !declared[eco] {
 			t.Errorf("coordinateFromGraphPackage handles %q but it is not declared", eco)
@@ -87,5 +92,16 @@ func TestSupportedEcosystemsMatchCoordinateMapping(t *testing.T) {
 		if !mappable && declared[eco] && eco != sdk.EcosystemConda {
 			t.Errorf("%q is declared but coordinateFromGraphPackage cannot map it", eco)
 		}
+	}
+}
+
+// A Maven artifact without a groupId cannot be addressed in ClearlyDefined, so
+// it should be skipped rather than sent as a malformed coordinate.
+func TestMavenWithoutGroupIDIsSkipped(t *testing.T) {
+	pkg := &sdk.Package{Coordinates: sdk.Coordinates{
+		Ecosystem: sdk.EcosystemMaven, Name: "orphan", Version: "1.0.0",
+	}}
+	if coord, ok := coordinateFromGraphPackage(pkg); ok {
+		t.Errorf("expected no coordinate without a groupId, got %q", coord)
 	}
 }

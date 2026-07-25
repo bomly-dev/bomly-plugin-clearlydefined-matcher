@@ -44,14 +44,25 @@ func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 		// no ClearlyDefined coordinate to build, so it is skipped without a
 		// request — leaving this empty would read as "every ecosystem".
 		//
-		// npm, Maven, PyPI and friends are ClearlyDefined types too, but Bomly
-		// already resolves those licences itself, so this plugin covers what
-		// the built-in matchers do not.
+		// The matcher only fills packages that have no licence yet, so
+		// overlapping with Bomly's built-in licence matchers is additive:
+		// ClearlyDefined is curated and often has an answer where deps.dev,
+		// which covers seven ecosystems best-effort, does not.
+		//
+		// Still missing: go (go/golang), and the git and sourcearchive types,
+		// which are commit-addressed rather than version-addressed. See #7.
 		SupportedEcosystems: []sdk.Ecosystem{
-			sdk.EcosystemPHP,   // composer/packagist
-			sdk.EcosystemDPKG,  // deb/debian
-			sdk.EcosystemSwift, // pod/cocoapods
-			sdk.EcosystemConda, // conda/{anaconda-main,anaconda-r,conda-forge}
+			sdk.EcosystemNPM,    // npm/npmjs
+			sdk.EcosystemMaven,  // maven/mavencentral
+			sdk.EcosystemScala,  // maven/mavencentral
+			sdk.EcosystemPython, // pypi/pypi
+			sdk.EcosystemDotNet, // nuget/nuget
+			sdk.EcosystemRuby,   // gem/rubygems
+			sdk.EcosystemRust,   // crate/cratesio
+			sdk.EcosystemPHP,    // composer/packagist
+			sdk.EcosystemDPKG,   // deb/debian
+			sdk.EcosystemSwift,  // pod/cocoapods
+			sdk.EcosystemConda,  // conda/{anaconda-main,anaconda-r,conda-forge}
 		},
 	}, nil
 }
@@ -254,6 +265,21 @@ func coordinateFromGraphPackage(pkg *sdk.Package) (string, bool) {
 		return "deb/debian/-/" + escapeSegment(name) + "/" + escapeSegment(version), true
 	case "swift":
 		return "pod/cocoapods/-/" + escapeSegment(name) + "/" + escapeSegment(version), true
+	case "npm":
+		return "npm/npmjs/" + escapeSegment(firstNonEmpty(org, "-")) + "/" + escapeSegment(name) + "/" + escapeSegment(version), true
+	case "maven", "scala":
+		if org == "" {
+			return "", false
+		}
+		return "maven/mavencentral/" + escapeSegment(org) + "/" + escapeSegment(name) + "/" + escapeSegment(version), true
+	case "rust":
+		return "crate/cratesio/-/" + escapeSegment(name) + "/" + escapeSegment(version), true
+	case "ruby":
+		return "gem/rubygems/-/" + escapeSegment(name) + "/" + escapeSegment(version), true
+	case "python":
+		return "pypi/pypi/-/" + escapeSegment(name) + "/" + escapeSegment(version), true
+	case "dotnet":
+		return "nuget/nuget/-/" + escapeSegment(name) + "/" + escapeSegment(version), true
 	default:
 		return "", false
 	}
@@ -333,6 +359,25 @@ func coordinateFromParsedPURL(p parsedPURL) (string, bool) {
 		return "deb/debian/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
 	case "cocoapods":
 		return "pod/cocoapods/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
+	case "npm":
+		// Scoped packages keep the scope as the namespace: npm/npmjs/@babel/core.
+		namespace := firstNonEmpty(p.Namespace, "-")
+		return "npm/npmjs/" + escapeSegment(namespace) + "/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
+	case "maven":
+		// ClearlyDefined requires the groupId, so an artifact without one
+		// cannot be addressed.
+		if strings.TrimSpace(p.Namespace) == "" {
+			return "", false
+		}
+		return "maven/mavencentral/" + escapeSegment(p.Namespace) + "/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
+	case "cargo":
+		return "crate/cratesio/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
+	case "gem":
+		return "gem/rubygems/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
+	case "pypi":
+		return "pypi/pypi/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
+	case "nuget":
+		return "nuget/nuget/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
 	case "conda":
 		channel := strings.TrimSpace(p.Qualifiers["channel"])
 		subdir := strings.TrimSpace(p.Qualifiers["subdir"])
