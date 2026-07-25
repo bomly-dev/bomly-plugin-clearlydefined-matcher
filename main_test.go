@@ -54,3 +54,54 @@ func TestMatchFetchesLicense(t *testing.T) {
 		t.Fatalf("licenses = %#v", pkg.Licenses)
 	}
 }
+
+// The declared ecosystems are what `bomly plugins list` and the marketplace
+// show, so they have to match what coordinateFromGraphPackage can actually
+// build a coordinate for. Conda is declared too but resolves only through the
+// PURL path, so it is checked separately.
+func TestSupportedEcosystemsMatchCoordinateMapping(t *testing.T) {
+	descriptor, err := (&matcher{}).Descriptor(context.Background())
+	if err != nil {
+		t.Fatalf("Descriptor: %v", err)
+	}
+
+	declared := make(map[sdk.Ecosystem]bool, len(descriptor.SupportedEcosystems))
+	for _, eco := range descriptor.SupportedEcosystems {
+		declared[eco] = true
+	}
+	if !declared[sdk.EcosystemConda] {
+		t.Error("conda resolves through the PURL path and should be declared")
+	}
+
+	candidates := []sdk.Ecosystem{
+		sdk.EcosystemPHP, sdk.EcosystemDPKG, sdk.EcosystemSwift, sdk.EcosystemNPM,
+		sdk.EcosystemMaven, sdk.EcosystemScala, sdk.EcosystemGo, sdk.EcosystemPython,
+		sdk.EcosystemRust, sdk.EcosystemRuby, sdk.EcosystemDotNet, sdk.EcosystemDart,
+		sdk.EcosystemElixir, sdk.EcosystemHaskell,
+	}
+	for _, eco := range candidates {
+		// Maven coordinates need a groupId, so give every candidate an Org and
+		// let the mapping decide whether it uses one.
+		pkg := &sdk.Package{Coordinates: sdk.Coordinates{
+			Ecosystem: eco, Org: "com.example", Name: "example", Version: "1.0.0",
+		}}
+		_, mappable := coordinateFromGraphPackage(pkg)
+		if mappable && !declared[eco] {
+			t.Errorf("coordinateFromGraphPackage handles %q but it is not declared", eco)
+		}
+		if !mappable && declared[eco] && eco != sdk.EcosystemConda {
+			t.Errorf("%q is declared but coordinateFromGraphPackage cannot map it", eco)
+		}
+	}
+}
+
+// A Maven artifact without a groupId cannot be addressed in ClearlyDefined, so
+// it should be skipped rather than sent as a malformed coordinate.
+func TestMavenWithoutGroupIDIsSkipped(t *testing.T) {
+	pkg := &sdk.Package{Coordinates: sdk.Coordinates{
+		Ecosystem: sdk.EcosystemMaven, Name: "orphan", Version: "1.0.0",
+	}}
+	if coord, ok := coordinateFromGraphPackage(pkg); ok {
+		t.Errorf("expected no coordinate without a groupId, got %q", coord)
+	}
+}
