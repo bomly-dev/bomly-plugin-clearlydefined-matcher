@@ -40,6 +40,19 @@ func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 		DisplayName: "ClearlyDefined License Matcher",
 		Aliases:     []string{"clearlydefined"},
 		Tags:        []string{"license-enrichment", "http", "cache"},
+		// Mirrors the coordinate mappings below. Anything outside this set has
+		// no ClearlyDefined coordinate to build, so it is skipped without a
+		// request — leaving this empty would read as "every ecosystem".
+		//
+		// npm, Maven, PyPI and friends are ClearlyDefined types too, but Bomly
+		// already resolves those licences itself, so this plugin covers what
+		// the built-in matchers do not.
+		SupportedEcosystems: []sdk.Ecosystem{
+			sdk.EcosystemPHP,   // composer/packagist
+			sdk.EcosystemDPKG,  // deb/debian
+			sdk.EcosystemSwift, // pod/cocoapods
+			sdk.EcosystemConda, // conda/{anaconda-main,anaconda-r,conda-forge}
+		},
 	}, nil
 }
 
