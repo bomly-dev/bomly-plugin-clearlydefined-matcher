@@ -3,7 +3,7 @@
 BINARY ?= bomly-plugin-clearlydefined-matcher
 
 build:
-	go build -o bin/$(BINARY) .
+	go build -o bin/$(BINARY) ./cmd/$(BINARY)
 
 test:
 	go test ./...
