@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bomly-dev/bomly-cli/sdk"
+	"github.com/bomly-dev/bomly-sdk"
 )
 
 func TestCoordinateFromPURL(t *testing.T) {
@@ -103,5 +103,53 @@ func TestMavenWithoutGroupIDIsSkipped(t *testing.T) {
 	}}
 	if coord, ok := coordinateFromGraphPackage(pkg); ok {
 		t.Errorf("expected no coordinate without a groupId, got %q", coord)
+	}
+}
+
+// The descriptor's ConfigSchema is generated from the config struct, so a
+// renamed or retyped field would silently change the advertised schema. Pin
+// the property names and types the plugin actually decodes.
+func TestDescriptorConfigSchema(t *testing.T) {
+	descriptor, err := (&matcher{}).Descriptor(context.Background())
+	if err != nil {
+		t.Fatalf("Descriptor: %v", err)
+	}
+	if len(descriptor.ConfigSchema) == 0 {
+		t.Fatal("descriptor ConfigSchema is empty")
+	}
+
+	var schema struct {
+		Type                 string                    `json:"type"`
+		Properties           map[string]map[string]any `json:"properties"`
+		AdditionalProperties *bool                     `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(descriptor.ConfigSchema, &schema); err != nil {
+		t.Fatalf("ConfigSchema is not valid JSON: %v", err)
+	}
+	if schema.Type != "object" {
+		t.Fatalf("expected object schema, got %q", schema.Type)
+	}
+	if schema.AdditionalProperties == nil || *schema.AdditionalProperties {
+		t.Fatal("expected additionalProperties to be false")
+	}
+
+	expected := map[string]string{
+		"api_base":      "string",
+		"cache_dir":     "string",
+		"cache_ttl":     "string",
+		"disable_cache": "boolean",
+	}
+	if len(schema.Properties) != len(expected) {
+		t.Fatalf("expected %d properties, got %#v", len(expected), schema.Properties)
+	}
+	for name, wantType := range expected {
+		property, ok := schema.Properties[name]
+		if !ok {
+			t.Errorf("missing property %q", name)
+			continue
+		}
+		if property["type"] != wantType {
+			t.Errorf("property %q has type %#v, want %q", name, property["type"], wantType)
+		}
 	}
 }

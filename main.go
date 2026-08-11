@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bomly-dev/bomly-cli/sdk"
+	"github.com/bomly-dev/bomly-sdk"
 )
 
 const (
@@ -36,10 +36,11 @@ type config struct {
 
 func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 	return &sdk.MatcherDescriptor{
-		Name:        matcherName,
-		DisplayName: "ClearlyDefined License Matcher",
-		Aliases:     []string{"clearlydefined"},
-		Tags:        []string{"license-enrichment", "http", "cache"},
+		Name:         matcherName,
+		DisplayName:  "ClearlyDefined License Matcher",
+		Aliases:      []string{"clearlydefined"},
+		Tags:         []string{"license-enrichment", "http", "cache"},
+		ConfigSchema: sdk.MustConfigSchemaFor(config{}),
 		// Mirrors the coordinate mappings below. Anything outside this set has
 		// no ClearlyDefined coordinate to build, so it is skipped without a
 		// request — leaving this empty would read as "every ecosystem".
