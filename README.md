@@ -6,7 +6,7 @@ External Bomly matcher plugin for [ClearlyDefined](https://clearlydefined.io) li
 
 ```bash
 go test ./...
-go build -o bin/bomly-plugin-clearlydefined-matcher .
+go build -o bin/bomly-plugin-clearlydefined-matcher ./cmd/bomly-plugin-clearlydefined-matcher
 ```
 
 ## Install for local development

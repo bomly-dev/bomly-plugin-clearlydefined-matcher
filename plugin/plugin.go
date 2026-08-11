@@ -1,4 +1,7 @@
-package main
+// Package plugin implements the ClearlyDefined license matcher: a Bomly
+// MATCHER that fills missing package license data from the curated
+// ClearlyDefined definitions service.
+package plugin
 
 import (
 	"context"
@@ -18,14 +21,25 @@ import (
 	"github.com/bomly-dev/bomly-sdk"
 )
 
+// Name is the plugin's identity. It MUST equal the "id" field in
+// bomly-plugin.json — Bomly refuses to load a plugin whose manifest id and
+// runtime descriptor name disagree.
+const Name = "clearlydefined-license-matcher"
+
 const (
-	matcherName     = "clearlydefined-license-matcher"
 	sourceType      = "external-clearlydefined"
 	defaultAPIBase  = "https://api.clearlydefined.io"
 	defaultCacheTTL = 24 * time.Hour
 )
 
-type matcher struct{}
+// Matcher is the component. Configuration is decoded once at construction
+// through the HostContext; a decode failure is remembered and surfaced
+// through Ready so the host can report the reason instead of hard-failing.
+type Matcher struct {
+	config    config
+	configErr error
+	http      *sdk.HTTPClientProvider
+}
 
 type config struct {
 	APIBase      string `json:"api_base"`
@@ -34,9 +48,10 @@ type config struct {
 	DisableCache bool   `json:"disable_cache"`
 }
 
-func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
-	return &sdk.MatcherDescriptor{
-		Name:         matcherName,
+// descriptor is the matcher's static registration data.
+func descriptor() sdk.MatcherDescriptor {
+	return sdk.MatcherDescriptor{
+		Name:         Name,
 		DisplayName:  "ClearlyDefined License Matcher",
 		Aliases:      []string{"clearlydefined"},
 		Tags:         []string{"license-enrichment", "http", "cache"},
@@ -65,34 +80,39 @@ func (m *matcher) Descriptor(context.Context) (*sdk.MatcherDescriptor, error) {
 			sdk.EcosystemSwift,  // pod/cocoapods
 			sdk.EcosystemConda,  // conda/{anaconda-main,anaconda-r,conda-forge}
 		},
-	}, nil
-}
-
-func (m *matcher) Ready(context.Context, *sdk.MatchRequest) (*sdk.ReadyResponse, error) {
-	if _, err := loadConfig(); err != nil {
-		return &sdk.ReadyResponse{Reason: "invalid clearlydefined matcher configuration: " + err.Error()}, nil
 	}
-	return &sdk.ReadyResponse{Ready: true}, nil
 }
 
-func (m *matcher) Applicable(_ context.Context, req *sdk.MatchRequest) (*sdk.ApplicableResponse, error) {
-	if req.Graph == nil || req.Registry == nil {
-		return &sdk.ApplicableResponse{Applicable: false}, nil
+// Descriptor identifies the matcher to Bomly.
+func (m *Matcher) Descriptor() sdk.MatcherDescriptor { return descriptor() }
+
+// Ready reports whether the matcher can run; an invalid configuration is
+// reported as the not-ready reason rather than a construction failure.
+func (m *Matcher) Ready(context.Context, sdk.MatchRequest) error {
+	if m.configErr != nil {
+		return fmt.Errorf("invalid clearlydefined matcher configuration: %w", m.configErr)
 	}
-	return &sdk.ApplicableResponse{Applicable: true}, nil
+	return nil
 }
 
-func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchResponse, error) {
+// Applicable reports whether the request carries a graph and a package
+// registry to enrich.
+func (m *Matcher) Applicable(_ context.Context, req sdk.MatchRequest) (bool, error) {
+	return req.Graph != nil && req.Registry != nil, nil
+}
+
+// Match fills missing license data for registry packages from ClearlyDefined.
+func (m *Matcher) Match(ctx context.Context, req sdk.MatchRequest) (sdk.MatchResult, error) {
 	if req.Registry == nil {
 		return matchResponse(req.Registry, 0, 0, 0), nil
 	}
-	cfg, err := loadConfig()
-	if err != nil {
-		return nil, err
+	if m.configErr != nil {
+		return sdk.MatchResult{}, fmt.Errorf("invalid clearlydefined matcher configuration: %w", m.configErr)
 	}
-	client, err := httpClient()
+	cfg := m.config
+	client, err := m.httpClient()
 	if err != nil {
-		return nil, err
+		return sdk.MatchResult{}, err
 	}
 	cache := newFileCache(cfg.CacheDir, cfg.CacheTTL, cfg.DisableCache)
 	matchedPackages := 0
@@ -131,11 +151,11 @@ func (m *matcher) Match(ctx context.Context, req *sdk.MatchRequest) (*sdk.MatchR
 	return matchResponse(req.Registry, matchedPackages, unmatchedPackages, licenses), nil
 }
 
-func matchResponse(registry *sdk.PackageRegistry, matchedPackages, unmatchedPackages, licenses int) *sdk.MatchResponse {
-	return &sdk.MatchResponse{
+func matchResponse(registry *sdk.PackageRegistry, matchedPackages, unmatchedPackages, licenses int) sdk.MatchResult {
+	return sdk.MatchResult{
 		Registry: registry,
 		MatcherStats: sdk.MatcherStats{
-			Name:              matcherName,
+			Name:              Name,
 			DisplayName:       "ClearlyDefined License Matcher",
 			MatchedPackages:   matchedPackages,
 			UnmatchedPackages: unmatchedPackages,
@@ -144,13 +164,13 @@ func matchResponse(registry *sdk.PackageRegistry, matchedPackages, unmatchedPack
 	}
 }
 
-func loadConfig() (config, error) {
+func loadConfig(host sdk.HostContext) (config, error) {
 	cfg := config{
 		APIBase:  defaultAPIBase,
 		CacheDir: defaultCacheDir(),
 		CacheTTL: defaultCacheTTL.String(),
 	}
-	if err := sdk.DecodePluginConfigFromEnv(&cfg); err != nil {
+	if err := host.DecodeConfig(&cfg); err != nil {
 		return config{}, err
 	}
 	if strings.TrimSpace(cfg.APIBase) == "" {
@@ -173,12 +193,33 @@ func defaultCacheDir() string {
 	return filepath.Join(home, ".bomly", "cache", "licenses", "clearlydefined")
 }
 
-func httpClient() (*http.Client, error) {
-	provider, err := sdk.NewHTTPClientProviderFromEnv()
-	if err != nil {
-		return nil, err
+func (m *Matcher) httpClient() (*http.Client, error) {
+	provider := m.http
+	if provider == nil {
+		created, err := sdk.NewHTTPClientProvider(sdk.HTTPClientConfig{})
+		if err != nil {
+			return nil, err
+		}
+		provider = created
 	}
 	return provider.Client(20 * time.Second), nil
+}
+
+// Module packages the matcher for both execution modes: Bomly can embed it
+// in-process or serve it as a managed plugin subprocess (see
+// cmd/bomly-plugin-clearlydefined-matcher).
+func Module() sdk.Module {
+	return sdk.Module{
+		Kind: sdk.PluginKindMatcher,
+		Matcher: &sdk.MatcherModule{
+			Descriptor: descriptor(),
+			New: func(_ context.Context, host sdk.HostContext) (sdk.Matcher, error) {
+				matcher := &Matcher{http: host.HTTPClient()}
+				matcher.config, matcher.configErr = loadConfig(host)
+				return matcher, nil
+			},
+		},
+	}
 }
 
 func fetchDefinition(ctx context.Context, client *http.Client, apiBase, coordinate string) ([]string, error) {
@@ -496,8 +537,4 @@ func (c fileCache) set(key string, values []string) error {
 func (c fileCache) path(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return filepath.Join(c.dir, hex.EncodeToString(sum[:])+".json")
-}
-
-func main() {
-	sdk.ServeMatcher(&matcher{})
 }
