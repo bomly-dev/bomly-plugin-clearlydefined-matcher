@@ -56,6 +56,7 @@ func descriptor() sdk.MatcherDescriptor {
 		Aliases:      []string{"clearlydefined"},
 		Tags:         []string{"license-enrichment", "http", "cache"},
 		ConfigSchema: sdk.MustConfigSchemaFor(config{}),
+		Capabilities: []string{sdk.CapabilityPackageUpdates},
 		// Mirrors the coordinate mappings below. Anything outside this set has
 		// no ClearlyDefined coordinate to build, so it is skipped without a
 		// request — leaving this empty would read as "every ecosystem".
@@ -102,9 +103,19 @@ func (m *Matcher) Applicable(_ context.Context, req sdk.MatchRequest) (bool, err
 }
 
 // Match fills missing license data for registry packages from ClearlyDefined.
+//
+// Two response shapes exist. Legacy hosts get the request registry back,
+// enriched in place (the protocol v1 baseline). When the request sets
+// AcceptPackageUpdates, the registry is left untouched and the result carries
+// PackageUpdates instead: one delta per enriched package holding only the
+// PURL, the resolved licenses, and Matched. The host merges deltas by PURL;
+// MergeFrom fills Licenses only when the package has none — exactly the
+// packages this matcher enriches — and ORs Matched in, so applying the deltas
+// reproduces the in-place enrichment.
 func (m *Matcher) Match(ctx context.Context, req sdk.MatchRequest) (sdk.MatchResult, error) {
+	useDeltas := req.AcceptPackageUpdates
 	if req.Registry == nil {
-		return matchResponse(req.Registry, 0, 0, 0), nil
+		return matchResponse(nil, nil, useDeltas, 0, 0, 0), nil
 	}
 	if m.configErr != nil {
 		return sdk.MatchResult{}, fmt.Errorf("invalid clearlydefined matcher configuration: %w", m.configErr)
@@ -118,6 +129,28 @@ func (m *Matcher) Match(ctx context.Context, req sdk.MatchRequest) (sdk.MatchRes
 	matchedPackages := 0
 	licenses := 0
 	unmatchedPackages := 0
+	var updates []*sdk.Package
+	record := func(pkg *sdk.Package, values []string) {
+		count := 0
+		if useDeltas {
+			if built := buildLicenses(pkg, values); len(built) > 0 {
+				updates = append(updates, &sdk.Package{
+					Coordinates: sdk.Coordinates{PURL: pkg.PURL},
+					Matched:     true,
+					Licenses:    built,
+				})
+				count = len(built)
+			}
+		} else {
+			count = applyLicenses(pkg, values)
+		}
+		if count > 0 {
+			matchedPackages++
+			licenses += count
+		} else {
+			unmatchedPackages++
+		}
+	}
 	for _, pkg := range req.Registry.All() {
 		if pkg == nil || len(pkg.Licenses) > 0 {
 			continue
@@ -128,32 +161,28 @@ func (m *Matcher) Match(ctx context.Context, req sdk.MatchRequest) (sdk.MatchRes
 			continue
 		}
 		if values, ok := cache.get(coordinate); ok {
-			if count := applyLicenses(pkg, values); count > 0 {
-				matchedPackages++
-				licenses += count
-			} else {
-				unmatchedPackages++
-			}
+			record(pkg, values)
 			continue
 		}
 		values, err := fetchDefinition(ctx, client, cfg.APIBase, coordinate)
 		if err != nil {
-			return matchResponse(req.Registry, matchedPackages, unmatchedPackages, licenses), err
+			return matchResponse(req.Registry, updates, useDeltas, matchedPackages, unmatchedPackages, licenses), err
 		}
 		_ = cache.set(coordinate, values)
-		if count := applyLicenses(pkg, values); count > 0 {
-			matchedPackages++
-			licenses += count
-		} else {
-			unmatchedPackages++
-		}
+		record(pkg, values)
 	}
-	return matchResponse(req.Registry, matchedPackages, unmatchedPackages, licenses), nil
+	return matchResponse(req.Registry, updates, useDeltas, matchedPackages, unmatchedPackages, licenses), nil
 }
 
-func matchResponse(registry *sdk.PackageRegistry, matchedPackages, unmatchedPackages, licenses int) sdk.MatchResult {
+func matchResponse(registry *sdk.PackageRegistry, updates []*sdk.Package, useDeltas bool, matchedPackages, unmatchedPackages, licenses int) sdk.MatchResult {
+	if useDeltas {
+		registry = nil
+	} else {
+		updates = nil
+	}
 	return sdk.MatchResult{
-		Registry: registry,
+		Registry:       registry,
+		PackageUpdates: updates,
 		MatcherStats: sdk.MatcherStats{
 			Name:              Name,
 			DisplayName:       "ClearlyDefined License Matcher",
@@ -248,14 +277,25 @@ func fetchDefinition(ctx context.Context, client *http.Client, apiBase, coordina
 	return definition.licenseValues(), nil
 }
 
-func applyLicenses(pkg *sdk.Package, values []string) int {
+// buildLicenses converts raw ClearlyDefined license values into the package
+// license records this matcher contributes. It returns nil when pkg already
+// has licenses or the values normalize to nothing.
+func buildLicenses(pkg *sdk.Package, values []string) []sdk.PackageLicense {
 	values = normalizeLicenseSet(values)
 	if pkg == nil || len(pkg.Licenses) > 0 || len(values) == 0 {
-		return 0
+		return nil
 	}
 	licenses := make([]sdk.PackageLicense, 0, len(values))
 	for _, value := range values {
 		licenses = append(licenses, sdk.PackageLicense{Value: value, SPDXExpression: value, Type: sourceType})
+	}
+	return licenses
+}
+
+func applyLicenses(pkg *sdk.Package, values []string) int {
+	licenses := buildLicenses(pkg, values)
+	if len(licenses) == 0 {
+		return 0
 	}
 	pkg.Licenses = licenses
 	pkg.Matched = true

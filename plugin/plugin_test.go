@@ -3,10 +3,12 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	sdk "github.com/bomly-dev/bomly-sdk"
@@ -79,6 +81,123 @@ func TestMatchFetchesLicense(t *testing.T) {
 	if len(pkg.Licenses) != 1 || pkg.Licenses[0].SPDXExpression != "MIT" || pkg.Licenses[0].Type != sourceType {
 		t.Fatalf("licenses = %#v", pkg.Licenses)
 	}
+}
+
+// newLicenseServer serves a ClearlyDefined fixture: the widget composer
+// package has a declared MIT license, everything else is unknown.
+func newLicenseServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/definitions/composer/packagist/acme/widget/1.2.3" {
+			_ = json.NewEncoder(w).Encode(response{Licensed: licensed{Declared: "MIT"}})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// newLicenseRegistry builds a fresh registry fixture: one package
+// ClearlyDefined knows, one it does not, and one that already has a license
+// and must be left alone.
+func newLicenseRegistry() *sdk.PackageRegistry {
+	registry := sdk.NewPackageRegistry()
+	registry.Add(&sdk.Package{Coordinates: sdk.Coordinates{
+		PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: sdk.EcosystemPHP,
+	}})
+	registry.Add(&sdk.Package{Coordinates: sdk.Coordinates{
+		PURL: "pkg:composer/acme/unknown@2.0.0", Name: "unknown", Org: "acme", Version: "2.0.0", Ecosystem: sdk.EcosystemPHP,
+	}})
+	registry.Add(&sdk.Package{
+		Coordinates: sdk.Coordinates{
+			PURL: "pkg:npm/preset@3.0.0", Name: "preset", Version: "3.0.0", Ecosystem: sdk.EcosystemNPM,
+		},
+		Licenses: []sdk.PackageLicense{{Value: "Apache-2.0", SPDXExpression: "Apache-2.0", Type: "declared"}},
+	})
+	return registry
+}
+
+// TestMatchDeltaEquivalence is the delta-protocol contract check: when the
+// request sets AcceptPackageUpdates, Match must leave the request registry
+// untouched and return deltas that — applied through the host's own merge,
+// sdk.ApplyPackageUpdates — reproduce the registry the legacy full-registry
+// path produces.
+func TestMatchDeltaEquivalence(t *testing.T) {
+	server := newLicenseServer(t)
+	cfg := `{"api_base":"` + server.URL + `","disable_cache":true}`
+
+	legacy, err := newMatcher(t, json.RawMessage(cfg)).Match(context.Background(), sdk.MatchRequest{
+		Registry: newLicenseRegistry(),
+		Graph:    sdk.New(),
+	})
+	if err != nil {
+		t.Fatalf("legacy Match() error = %v", err)
+	}
+
+	deltaRegistry := newLicenseRegistry()
+	delta, err := newMatcher(t, json.RawMessage(cfg)).Match(context.Background(), sdk.MatchRequest{
+		Registry:             deltaRegistry,
+		Graph:                sdk.New(),
+		AcceptPackageUpdates: true,
+	})
+	if err != nil {
+		t.Fatalf("delta Match() error = %v", err)
+	}
+
+	if delta.Registry != nil {
+		t.Fatal("delta path must not return a registry")
+	}
+	if len(delta.PackageUpdates) != 1 {
+		t.Fatalf("expected 1 package update, got %d", len(delta.PackageUpdates))
+	}
+	update := delta.PackageUpdates[0]
+	if update.PURL != "pkg:composer/acme/widget@1.2.3" || !update.Matched {
+		t.Fatalf("unexpected update %#v", update)
+	}
+	if len(update.Licenses) != 1 || update.Licenses[0].SPDXExpression != "MIT" || update.Licenses[0].Type != sourceType {
+		t.Fatalf("update licenses = %#v", update.Licenses)
+	}
+	if update.Metadata != nil || len(update.Vulnerabilities) != 0 {
+		t.Fatalf("update must carry only the mutated fields, got %#v", update)
+	}
+
+	// The matcher must not have enriched the request registry in delta mode.
+	for _, pkg := range deltaRegistry.All() {
+		if pkg.PURL == "pkg:npm/preset@3.0.0" {
+			continue // carried its license into the request
+		}
+		if pkg.Matched || len(pkg.Licenses) != 0 {
+			t.Fatalf("delta path mutated request registry package %#v", pkg)
+		}
+	}
+
+	merged := sdk.ApplyPackageUpdates(deltaRegistry, delta.PackageUpdates)
+	if diff := registryDiff(legacy.Registry, merged); diff != "" {
+		t.Fatalf("merged delta registry differs from legacy registry: %s", diff)
+	}
+	if legacy.MatcherStats != delta.MatcherStats {
+		t.Fatalf("matcher stats diverge: legacy %#v, delta %#v", legacy.MatcherStats, delta.MatcherStats)
+	}
+}
+
+// registryDiff deep-compares two registries package by package.
+func registryDiff(want, got *sdk.PackageRegistry) string {
+	wantPkgs := want.All()
+	gotPkgs := got.All()
+	if len(wantPkgs) != len(gotPkgs) {
+		return fmt.Sprintf("package count %d != %d", len(gotPkgs), len(wantPkgs))
+	}
+	for _, wantPkg := range wantPkgs {
+		gotPkg, ok := got.Get(wantPkg.PURL)
+		if !ok {
+			return fmt.Sprintf("missing package %s", wantPkg.PURL)
+		}
+		if !reflect.DeepEqual(wantPkg, gotPkg) {
+			return fmt.Sprintf("package %s differs: want %#v, got %#v", wantPkg.PURL, wantPkg, gotPkg)
+		}
+	}
+	return ""
 }
 
 // The declared ecosystems are what `bomly plugins list` and the marketplace
