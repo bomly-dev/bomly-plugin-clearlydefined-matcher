@@ -55,3 +55,24 @@ plugins:
 ```
 
 The plugin honors Bomly's proxy environment passed to external plugins.
+
+## What the plugin writes
+
+The plugin only fills packages that have no license yet. For each such package
+it writes one license record per value ClearlyDefined reports:
+
+- `value` is the raw ClearlyDefined value, trimmed and nothing else.
+- `spdxExpression` is filled **only when the value really is SPDX**, and holds
+  the canonical spelling: `apache-2.0` becomes `Apache-2.0`, the deprecated
+  `GPL-2.0` becomes `GPL-2.0-only`, and `(MIT OR CC0-1.0)` becomes
+  `MIT OR CC0-1.0`. ClearlyDefined also reports free text — `OTHER`,
+  `Public Domain`, `Apache 2.0`, `SEE LICENSE IN LICENSE` — and those keep
+  their `value` with `spdxExpression` left empty rather than claiming to be an
+  expression they are not.
+- `source` names this plugin, so you can see which component supplied a claim.
+- `type` (`declared` / `concluded`) is left unset on purpose: ClearlyDefined
+  serves a declared license and a discovered-expression fallback through the
+  same field, so the plugin cannot tell the two apart.
+
+`NOASSERTION` means "nothing was asserted" and is dropped rather than recorded
+as a license.
