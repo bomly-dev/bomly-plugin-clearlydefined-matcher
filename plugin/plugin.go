@@ -407,7 +407,7 @@ func parsePURL(value string) (parsedPURL, bool) {
 		return parsedPURL{}, false
 	}
 	qualifiers := make(map[string]string)
-	for _, part := range strings.Split(qualifierText, "&") {
+	for part := range strings.SplitSeq(qualifierText, "&") {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}
