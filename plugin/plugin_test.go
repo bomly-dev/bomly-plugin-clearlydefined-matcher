@@ -78,7 +78,7 @@ func TestMatchFetchesLicense(t *testing.T) {
 	if !ok {
 		t.Fatal("package missing")
 	}
-	if len(pkg.Licenses) != 1 || pkg.Licenses[0].SPDXExpression != "MIT" || pkg.Licenses[0].Type != sourceType {
+	if len(pkg.Licenses) != 1 || pkg.Licenses[0].SPDXExpression != "MIT" || pkg.Licenses[0].Source != licenseSource {
 		t.Fatalf("licenses = %#v", pkg.Licenses)
 	}
 }
@@ -155,7 +155,7 @@ func TestMatchDeltaEquivalence(t *testing.T) {
 	if update.PURL != "pkg:composer/acme/widget@1.2.3" || !update.Matched {
 		t.Fatalf("unexpected update %#v", update)
 	}
-	if len(update.Licenses) != 1 || update.Licenses[0].SPDXExpression != "MIT" || update.Licenses[0].Type != sourceType {
+	if len(update.Licenses) != 1 || update.Licenses[0].SPDXExpression != "MIT" || update.Licenses[0].Source != licenseSource {
 		t.Fatalf("update licenses = %#v", update.Licenses)
 	}
 	if update.Metadata != nil || len(update.Vulnerabilities) != 0 {

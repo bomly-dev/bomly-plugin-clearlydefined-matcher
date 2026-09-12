@@ -27,7 +27,13 @@ import (
 const Name = "clearlydefined-license-matcher"
 
 const (
-	sourceType      = "external-clearlydefined"
+	// licenseSource names this component as the supplier of a license claim.
+	// It is written to PackageLicense.Source -- "who says so" -- and never to
+	// PackageLicense.Type, which is the SDK's closed two-member provenance
+	// vocabulary ("declared" / "concluded"). This matcher used to write its
+	// own name into Type; the SDK gate now drops anything outside that
+	// vocabulary, which silently erased the claim's supplier.
+	licenseSource   = "external-clearlydefined"
 	defaultAPIBase  = "https://api.clearlydefined.io"
 	defaultCacheTTL = 24 * time.Hour
 )
@@ -287,7 +293,7 @@ func buildLicenses(pkg *sdk.Package, values []string) []sdk.PackageLicense {
 	}
 	licenses := make([]sdk.PackageLicense, 0, len(values))
 	for _, value := range values {
-		licenses = append(licenses, sdk.PackageLicense{Value: value, SPDXExpression: value, Type: sourceType})
+		licenses = append(licenses, sdk.PackageLicense{Value: value, SPDXExpression: value, Source: licenseSource})
 	}
 	return licenses
 }
