@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/bomly-dev/bomly-sdk"
+	"github.com/bomly-dev/bomly-sdk/matcherkit"
+	"github.com/bomly-dev/bomly-sdk/purlkit"
 )
 
 // Name is the plugin's identity. It MUST equal the "id" field in
@@ -286,16 +288,26 @@ func fetchDefinition(ctx context.Context, client *http.Client, apiBase, coordina
 // buildLicenses converts raw ClearlyDefined license values into the package
 // license records this matcher contributes. It returns nil when pkg already
 // has licenses or the values normalize to nothing.
+//
+// Classification is the SDK's, not this matcher's. ClearlyDefined answers with
+// whatever its curators and scanners recorded -- "Apache 2.0", "Public Domain",
+// "SEE LICENSE IN LICENSE" and "OTHER" all arrive through the same field as
+// "MIT" -- and this function used to copy every one of them into
+// SPDXExpression, asserting a validity it had never checked. matcherkit
+// validates each value through spdxkit (ADR-0035) and fills SPDXExpression only
+// when the value really is SPDX, so free text now carries as free text.
+//
+// Type is deliberately left empty. ClearlyDefined returns licensed.declared or
+// a discovered-expression fallback through one field, so which of the SDK's two
+// provenance values ("declared" / "concluded") applies is not knowable without
+// a cache-format change; naming the component in Source is the fact this
+// matcher can actually state.
 func buildLicenses(pkg *sdk.Package, values []string) []sdk.PackageLicense {
 	values = normalizeLicenseSet(values)
 	if pkg == nil || len(pkg.Licenses) > 0 || len(values) == 0 {
 		return nil
 	}
-	licenses := make([]sdk.PackageLicense, 0, len(values))
-	for _, value := range values {
-		licenses = append(licenses, sdk.PackageLicense{Value: value, SPDXExpression: value, Source: licenseSource})
-	}
-	return licenses
+	return matcherkit.NormalizeLicenseSetFrom(values, "", licenseSource)
 }
 
 func applyLicenses(pkg *sdk.Package, values []string) int {
@@ -308,6 +320,12 @@ func applyLicenses(pkg *sdk.Package, values []string) int {
 	return len(licenses)
 }
 
+// normalizeLicenseSet is the pre-pass matcherkit does not own: ClearlyDefined's
+// "NOASSERTION" sentinel means "no licence was asserted" and must not become a
+// licence value, and the sorted order keeps a package's licence list stable
+// across runs regardless of how the definitions service ordered it. Trimming
+// and de-duplication are repeated by matcherkit; doing them here first is what
+// makes the sort deterministic.
 func normalizeLicenseSet(values []string) []string {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))
@@ -330,7 +348,12 @@ func coordinateFromPackage(pkg *sdk.Package) (string, bool) {
 	if pkg == nil || strings.TrimSpace(pkg.Version) == "" {
 		return "", false
 	}
-	if parsed, ok := parsePURL(strings.TrimSpace(pkg.PURL)); ok {
+	// purlkit owns package-URL parsing (ADR-0038): it validates against the
+	// specification, applies the type-specific normalisation ClearlyDefined
+	// coordinates need (npm scopes, PyPI names and versions), and never panics
+	// on the untrusted strings that reach a package registry. A value it
+	// refuses falls through to the graph coordinates below.
+	if parsed, err := purlkit.Parse(strings.TrimSpace(pkg.PURL)); err == nil {
 		if coordinate, ok := coordinateFromParsedPURL(parsed); ok {
 			return coordinate, true
 		}
@@ -373,70 +396,19 @@ func coordinateFromGraphPackage(pkg *sdk.Package) (string, bool) {
 	}
 }
 
-type parsedPURL struct {
-	Type       string
-	Namespace  string
-	Name       string
-	Version    string
-	Qualifiers map[string]string
-}
-
-func parsePURL(value string) (parsedPURL, bool) {
-	if !strings.HasPrefix(value, "pkg:") {
-		return parsedPURL{}, false
-	}
-	trimmed := strings.TrimPrefix(value, "pkg:")
-	trimmed = strings.SplitN(trimmed, "#", 2)[0]
-	typeAndPath := trimmed
-	qualifierText := ""
-	if base, qualifiers, ok := strings.Cut(trimmed, "?"); ok {
-		typeAndPath = base
-		qualifierText = qualifiers
-	}
-	typeAndPath, version, _ := strings.Cut(typeAndPath, "@")
-	typeValue, rawPath, ok := strings.Cut(typeAndPath, "/")
-	if !ok {
-		return parsedPURL{}, false
-	}
-	decodedPath, err := url.PathUnescape(rawPath)
-	if err != nil {
-		decodedPath = rawPath
-	}
-	parts := strings.Split(decodedPath, "/")
-	if len(parts) == 0 {
-		return parsedPURL{}, false
-	}
-	qualifiers := make(map[string]string)
-	for part := range strings.SplitSeq(qualifierText, "&") {
-		if strings.TrimSpace(part) == "" {
-			continue
-		}
-		key, val, ok := strings.Cut(part, "=")
-		if !ok {
-			continue
-		}
-		decodedVal, err := url.QueryUnescape(val)
-		if err != nil {
-			decodedVal = val
-		}
-		qualifiers[strings.ToLower(strings.TrimSpace(key))] = decodedVal
-	}
-	name := parts[len(parts)-1]
-	namespace := ""
-	if len(parts) > 1 {
-		namespace = strings.Join(parts[:len(parts)-1], "/")
-	}
-	return parsedPURL{
-		Type:       strings.ToLower(strings.TrimSpace(typeValue)),
-		Namespace:  strings.TrimSpace(namespace),
-		Name:       strings.TrimSpace(name),
-		Version:    strings.TrimSpace(version),
-		Qualifiers: qualifiers,
-	}, name != ""
-}
-
-func coordinateFromParsedPURL(p parsedPURL) (string, bool) {
+func coordinateFromParsedPURL(p purlkit.PURL) (string, bool) {
 	if p.Version == "" {
+		return "", false
+	}
+	// A ClearlyDefined coordinate is a path, and its namespace and name are
+	// one segment each. A package URL may legally carry a separator inside a
+	// single component -- "pkg:npm/%40types%2Fnode" names one component
+	// "@types/node" rather than the two the scoped form spells -- and such a
+	// value has no coordinate to build: percent-escaping it produces
+	// "@types%2Fnode", which the service answers for nothing. Refusing hands
+	// the package to the graph-coordinate fallback below, where the org and
+	// name are already two separate fields.
+	if strings.Contains(p.Namespace, "/") || strings.Contains(p.Name, "/") {
 		return "", false
 	}
 	switch p.Type {
@@ -467,8 +439,8 @@ func coordinateFromParsedPURL(p parsedPURL) (string, bool) {
 	case "nuget":
 		return "nuget/nuget/-/" + escapeSegment(p.Name) + "/" + escapeSegment(p.Version), true
 	case "conda":
-		channel := strings.TrimSpace(p.Qualifiers["channel"])
-		subdir := strings.TrimSpace(p.Qualifiers["subdir"])
+		channel := qualifier(p, "channel")
+		subdir := qualifier(p, "subdir")
 		provider := condaProvider(channel)
 		if provider == "" || subdir == "" {
 			return "", false
@@ -477,6 +449,18 @@ func coordinateFromParsedPURL(p parsedPURL) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// qualifier reads one package-URL qualifier by its canonical lowercase key.
+// purlkit returns qualifiers as a sorted slice with lowercased keys, so the
+// lookup needs no case folding of its own.
+func qualifier(p purlkit.PURL, key string) string {
+	for _, q := range p.Qualifiers {
+		if q.Key == key {
+			return strings.TrimSpace(q.Value)
+		}
+	}
+	return ""
 }
 
 func condaProvider(channel string) string {
