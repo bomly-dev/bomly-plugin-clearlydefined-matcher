@@ -11,9 +11,12 @@ import (
 	"reflect"
 	"testing"
 
-	sdk "github.com/bomly-dev/bomly-sdk"
 	"github.com/bomly-dev/bomly-sdk/conformance"
 	"go.uber.org/zap"
+
+	"github.com/bomly-dev/bomly-sdk/httpkit"
+	"github.com/bomly-dev/bomly-sdk/model"
+	sdkplugin "github.com/bomly-dev/bomly-sdk/plugin"
 )
 
 // testHost is a minimal HostContext for unit tests.
@@ -22,9 +25,9 @@ type testHost struct {
 }
 
 func (h testHost) Logger() *zap.Logger                 { return zap.NewNop() }
-func (h testHost) HTTPClient() *sdk.HTTPClientProvider { return nil }
-func (h testHost) Runtime() sdk.RuntimeInfo {
-	return sdk.RuntimeInfo{Execution: sdk.ExecutionEmbedded}
+func (h testHost) HTTPClient() *httpkit.ClientProvider { return nil }
+func (h testHost) Runtime() sdkplugin.RuntimeInfo {
+	return sdkplugin.RuntimeInfo{Execution: sdkplugin.ExecutionEmbedded}
 }
 
 func (h testHost) DecodeConfig(v any) error {
@@ -35,7 +38,7 @@ func (h testHost) DecodeConfig(v any) error {
 	return json.Unmarshal(payload, v)
 }
 
-func newMatcher(t *testing.T, config json.RawMessage) sdk.Matcher {
+func newMatcher(t *testing.T, config json.RawMessage) sdkplugin.Matcher {
 	t.Helper()
 	matcher, err := Module().Matcher.New(context.Background(), testHost{config: config})
 	if err != nil {
@@ -45,7 +48,7 @@ func newMatcher(t *testing.T, config json.RawMessage) sdk.Matcher {
 }
 
 func TestCoordinateFromPURL(t *testing.T) {
-	pkg := &sdk.Package{Coordinates: sdk.Coordinates{PURL: "pkg:composer/acme/widget@1.2.3", Version: "1.2.3"}}
+	pkg := &model.Package{Coordinates: model.Coordinates{PURL: "pkg:composer/acme/widget@1.2.3", Version: "1.2.3"}}
 	got, ok := coordinateFromPackage(pkg)
 	if !ok {
 		t.Fatal("expected coordinate")
@@ -68,9 +71,9 @@ func TestMatchFetchesLicense(t *testing.T) {
 	cfg := `{"api_base":"` + server.URL + `","cache_dir":"` + filepath.ToSlash(filepath.Join(t.TempDir(), "cache")) + `"}`
 	matcher := newMatcher(t, json.RawMessage(cfg))
 
-	registry := sdk.NewPackageRegistry()
-	registry.Add(&sdk.Package{Coordinates: sdk.Coordinates{PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: sdk.EcosystemPHP}})
-	resp, err := matcher.Match(context.Background(), sdk.MatchRequest{Registry: registry, Graph: sdk.New()})
+	registry := model.NewPackageRegistry()
+	registry.Add(&model.Package{Coordinates: model.Coordinates{PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: model.EcosystemPHP}})
+	resp, err := matcher.Match(context.Background(), sdkplugin.MatchRequest{Registry: registry, Graph: model.New()})
 	if err != nil {
 		t.Fatalf("Match() error = %v", err)
 	}
@@ -101,19 +104,19 @@ func newLicenseServer(t *testing.T) *httptest.Server {
 // newLicenseRegistry builds a fresh registry fixture: one package
 // ClearlyDefined knows, one it does not, and one that already has a license
 // and must be left alone.
-func newLicenseRegistry() *sdk.PackageRegistry {
-	registry := sdk.NewPackageRegistry()
-	registry.Add(&sdk.Package{Coordinates: sdk.Coordinates{
-		PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: sdk.EcosystemPHP,
+func newLicenseRegistry() *model.PackageRegistry {
+	registry := model.NewPackageRegistry()
+	registry.Add(&model.Package{Coordinates: model.Coordinates{
+		PURL: "pkg:composer/acme/widget@1.2.3", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: model.EcosystemPHP,
 	}})
-	registry.Add(&sdk.Package{Coordinates: sdk.Coordinates{
-		PURL: "pkg:composer/acme/unknown@2.0.0", Name: "unknown", Org: "acme", Version: "2.0.0", Ecosystem: sdk.EcosystemPHP,
+	registry.Add(&model.Package{Coordinates: model.Coordinates{
+		PURL: "pkg:composer/acme/unknown@2.0.0", Name: "unknown", Org: "acme", Version: "2.0.0", Ecosystem: model.EcosystemPHP,
 	}})
-	registry.Add(&sdk.Package{
-		Coordinates: sdk.Coordinates{
-			PURL: "pkg:npm/preset@3.0.0", Name: "preset", Version: "3.0.0", Ecosystem: sdk.EcosystemNPM,
+	registry.Add(&model.Package{
+		Coordinates: model.Coordinates{
+			PURL: "pkg:npm/preset@3.0.0", Name: "preset", Version: "3.0.0", Ecosystem: model.EcosystemNPM,
 		},
-		Licenses: []sdk.PackageLicense{{Value: "Apache-2.0", SPDXExpression: "Apache-2.0", Type: "declared"}},
+		Licenses: []model.PackageLicense{{Value: "Apache-2.0", SPDXExpression: "Apache-2.0", Type: "declared"}},
 	})
 	return registry
 }
@@ -127,18 +130,18 @@ func TestMatchDeltaEquivalence(t *testing.T) {
 	server := newLicenseServer(t)
 	cfg := `{"api_base":"` + server.URL + `","disable_cache":true}`
 
-	legacy, err := newMatcher(t, json.RawMessage(cfg)).Match(context.Background(), sdk.MatchRequest{
+	legacy, err := newMatcher(t, json.RawMessage(cfg)).Match(context.Background(), sdkplugin.MatchRequest{
 		Registry: newLicenseRegistry(),
-		Graph:    sdk.New(),
+		Graph:    model.New(),
 	})
 	if err != nil {
 		t.Fatalf("legacy Match() error = %v", err)
 	}
 
 	deltaRegistry := newLicenseRegistry()
-	delta, err := newMatcher(t, json.RawMessage(cfg)).Match(context.Background(), sdk.MatchRequest{
+	delta, err := newMatcher(t, json.RawMessage(cfg)).Match(context.Background(), sdkplugin.MatchRequest{
 		Registry:             deltaRegistry,
-		Graph:                sdk.New(),
+		Graph:                model.New(),
 		AcceptPackageUpdates: true,
 	})
 	if err != nil {
@@ -172,7 +175,7 @@ func TestMatchDeltaEquivalence(t *testing.T) {
 		}
 	}
 
-	merged := sdk.ApplyPackageUpdates(deltaRegistry, delta.PackageUpdates)
+	merged := model.ApplyPackageUpdates(deltaRegistry, delta.PackageUpdates)
 	if diff := registryDiff(legacy.Registry, merged); diff != "" {
 		t.Fatalf("merged delta registry differs from legacy registry: %s", diff)
 	}
@@ -182,7 +185,7 @@ func TestMatchDeltaEquivalence(t *testing.T) {
 }
 
 // registryDiff deep-compares two registries package by package.
-func registryDiff(want, got *sdk.PackageRegistry) string {
+func registryDiff(want, got *model.PackageRegistry) string {
 	wantPkgs := want.All()
 	gotPkgs := got.All()
 	if len(wantPkgs) != len(gotPkgs) {
@@ -207,31 +210,31 @@ func registryDiff(want, got *sdk.PackageRegistry) string {
 func TestSupportedEcosystemsMatchCoordinateMapping(t *testing.T) {
 	descriptor := Module().Matcher.Descriptor
 
-	declared := make(map[sdk.Ecosystem]bool, len(descriptor.SupportedEcosystems))
+	declared := make(map[model.Ecosystem]bool, len(descriptor.SupportedEcosystems))
 	for _, eco := range descriptor.SupportedEcosystems {
 		declared[eco] = true
 	}
-	if !declared[sdk.EcosystemConda] {
+	if !declared[model.EcosystemConda] {
 		t.Error("conda resolves through the PURL path and should be declared")
 	}
 
-	candidates := []sdk.Ecosystem{
-		sdk.EcosystemPHP, sdk.EcosystemDPKG, sdk.EcosystemSwift, sdk.EcosystemNPM,
-		sdk.EcosystemMaven, sdk.EcosystemScala, sdk.EcosystemGo, sdk.EcosystemPython,
-		sdk.EcosystemRust, sdk.EcosystemRuby, sdk.EcosystemDotNet, sdk.EcosystemDart,
-		sdk.EcosystemElixir, sdk.EcosystemHaskell,
+	candidates := []model.Ecosystem{
+		model.EcosystemPHP, model.EcosystemDPKG, model.EcosystemSwift, model.EcosystemNPM,
+		model.EcosystemMaven, model.EcosystemScala, model.EcosystemGo, model.EcosystemPython,
+		model.EcosystemRust, model.EcosystemRuby, model.EcosystemDotNet, model.EcosystemDart,
+		model.EcosystemElixir, model.EcosystemHaskell,
 	}
 	for _, eco := range candidates {
 		// Maven coordinates need a groupId, so give every candidate an Org and
 		// let the mapping decide whether it uses one.
-		pkg := &sdk.Package{Coordinates: sdk.Coordinates{
+		pkg := &model.Package{Coordinates: model.Coordinates{
 			Ecosystem: eco, Org: "com.example", Name: "example", Version: "1.0.0",
 		}}
 		_, mappable := coordinateFromGraphPackage(pkg)
 		if mappable && !declared[eco] {
 			t.Errorf("coordinateFromGraphPackage handles %q but it is not declared", eco)
 		}
-		if !mappable && declared[eco] && eco != sdk.EcosystemConda {
+		if !mappable && declared[eco] && eco != model.EcosystemConda {
 			t.Errorf("%q is declared but coordinateFromGraphPackage cannot map it", eco)
 		}
 	}
@@ -240,8 +243,8 @@ func TestSupportedEcosystemsMatchCoordinateMapping(t *testing.T) {
 // A Maven artifact without a groupId cannot be addressed in ClearlyDefined, so
 // it should be skipped rather than sent as a malformed coordinate.
 func TestMavenWithoutGroupIDIsSkipped(t *testing.T) {
-	pkg := &sdk.Package{Coordinates: sdk.Coordinates{
-		Ecosystem: sdk.EcosystemMaven, Name: "orphan", Version: "1.0.0",
+	pkg := &model.Package{Coordinates: model.Coordinates{
+		Ecosystem: model.EcosystemMaven, Name: "orphan", Version: "1.0.0",
 	}}
 	if coord, ok := coordinateFromGraphPackage(pkg); ok {
 		t.Errorf("expected no coordinate without a groupId, got %q", coord)
@@ -253,10 +256,10 @@ func TestMavenWithoutGroupIDIsSkipped(t *testing.T) {
 // it (the ReadyResponse.Reason contract from the legacy serving style).
 func TestInvalidConfigSurfacesThroughReady(t *testing.T) {
 	matcher := newMatcher(t, json.RawMessage(`{"api_base":42}`))
-	if err := matcher.Ready(context.Background(), sdk.MatchRequest{}); err == nil {
+	if err := matcher.Ready(context.Background(), sdkplugin.MatchRequest{}); err == nil {
 		t.Fatal("expected Ready to report the invalid configuration")
 	}
-	if _, err := matcher.Match(context.Background(), sdk.MatchRequest{Registry: sdk.NewPackageRegistry()}); err == nil {
+	if _, err := matcher.Match(context.Background(), sdkplugin.MatchRequest{Registry: model.NewPackageRegistry()}); err == nil {
 		t.Fatal("expected Match to refuse to run with an invalid configuration")
 	}
 }
