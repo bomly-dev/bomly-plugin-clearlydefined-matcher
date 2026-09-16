@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	sdk "github.com/bomly-dev/bomly-sdk"
+	"github.com/bomly-dev/bomly-sdk/model"
 )
 
 // TestLicenseValuesAreClassifiedNotAsserted pins the classification contract.
@@ -44,7 +44,7 @@ func TestLicenseValuesAreClassifiedNotAsserted(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			licenses := buildLicenses(&sdk.Package{}, []string{tc.value})
+			licenses := buildLicenses(&model.Package{}, []string{tc.value})
 			if len(licenses) != 1 {
 				t.Fatalf("buildLicenses(%q) = %#v, want one licence", tc.value, licenses)
 			}
@@ -74,7 +74,7 @@ func TestLicenseValuesAreClassifiedNotAsserted(t *testing.T) {
 // sentinel and must never become a licence value, and the emitted order is
 // sorted so a package's licences do not shuffle between runs.
 func TestLicenseSetIsFilteredDeduplicatedAndOrdered(t *testing.T) {
-	licenses := buildLicenses(&sdk.Package{}, []string{"MIT", "NOASSERTION", "Apache-2.0", "  MIT  ", ""})
+	licenses := buildLicenses(&model.Package{}, []string{"MIT", "NOASSERTION", "Apache-2.0", "  MIT  ", ""})
 	var values []string
 	for _, license := range licenses {
 		values = append(values, license.Value)
@@ -88,7 +88,7 @@ func TestLicenseSetIsFilteredDeduplicatedAndOrdered(t *testing.T) {
 			t.Fatalf("values = %#v, want %#v", values, want)
 		}
 	}
-	if got := buildLicenses(&sdk.Package{}, []string{"NOASSERTION"}); len(got) != 0 {
+	if got := buildLicenses(&model.Package{}, []string{"NOASSERTION"}); len(got) != 0 {
 		t.Fatalf("NOASSERTION alone produced %#v, want no licences", got)
 	}
 }
@@ -134,7 +134,7 @@ func TestCoordinateFromPackageURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pkg := &sdk.Package{Coordinates: sdk.Coordinates{PURL: tc.purl, Version: "probe"}}
+			pkg := &model.Package{Coordinates: model.Coordinates{PURL: tc.purl, Version: "probe"}}
 			got, ok := coordinateFromPackage(pkg)
 			if tc.want == "" {
 				if ok {
@@ -159,27 +159,27 @@ func TestCoordinateFromPackageURL(t *testing.T) {
 func TestRefusedPackageURLFallsBackToGraphCoordinates(t *testing.T) {
 	cases := []struct {
 		name string
-		pkg  *sdk.Package
+		pkg  *model.Package
 		want string
 	}{
 		{
 			name: "component carrying a separator",
-			pkg: &sdk.Package{Coordinates: sdk.Coordinates{
-				PURL: "pkg:npm/%40types%2Fnode@20.0.0", Name: "node", Org: "@types", Version: "20.0.0", Ecosystem: sdk.EcosystemNPM,
+			pkg: &model.Package{Coordinates: model.Coordinates{
+				PURL: "pkg:npm/%40types%2Fnode@20.0.0", Name: "node", Org: "@types", Version: "20.0.0", Ecosystem: model.EcosystemNPM,
 			}},
 			want: "npm/npmjs/@types/node/20.0.0",
 		},
 		{
 			name: "blank name",
-			pkg: &sdk.Package{Coordinates: sdk.Coordinates{
-				PURL: "pkg:npm/ @4.17.21", Name: "lodash", Version: "4.17.21", Ecosystem: sdk.EcosystemNPM,
+			pkg: &model.Package{Coordinates: model.Coordinates{
+				PURL: "pkg:npm/ @4.17.21", Name: "lodash", Version: "4.17.21", Ecosystem: model.EcosystemNPM,
 			}},
 			want: "npm/npmjs/-/lodash/4.17.21",
 		},
 		{
 			name: "not a package URL at all",
-			pkg: &sdk.Package{Coordinates: sdk.Coordinates{
-				PURL: "not-a-purl", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: sdk.EcosystemPHP,
+			pkg: &model.Package{Coordinates: model.Coordinates{
+				PURL: "not-a-purl", Name: "widget", Org: "acme", Version: "1.2.3", Ecosystem: model.EcosystemPHP,
 			}},
 			want: "composer/packagist/acme/widget/1.2.3",
 		},

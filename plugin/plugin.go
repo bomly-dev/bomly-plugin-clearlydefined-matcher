@@ -18,9 +18,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bomly-dev/bomly-sdk"
 	"github.com/bomly-dev/bomly-sdk/matcherkit"
 	"github.com/bomly-dev/bomly-sdk/purlkit"
+
+	"github.com/bomly-dev/bomly-sdk/httpkit"
+	"github.com/bomly-dev/bomly-sdk/model"
+	sdkplugin "github.com/bomly-dev/bomly-sdk/plugin"
 )
 
 // Name is the plugin's identity. It MUST equal the "id" field in
@@ -46,7 +49,7 @@ const (
 type Matcher struct {
 	config    config
 	configErr error
-	http      *sdk.HTTPClientProvider
+	http      *httpkit.ClientProvider
 }
 
 type config struct {
@@ -57,14 +60,14 @@ type config struct {
 }
 
 // descriptor is the matcher's static registration data.
-func descriptor() sdk.MatcherDescriptor {
-	return sdk.MatcherDescriptor{
+func descriptor() sdkplugin.MatcherDescriptor {
+	return sdkplugin.MatcherDescriptor{
 		Name:         Name,
 		DisplayName:  "ClearlyDefined License Matcher",
 		Aliases:      []string{"clearlydefined"},
 		Tags:         []string{"license-enrichment", "http", "cache"},
-		ConfigSchema: sdk.MustConfigSchemaFor(config{}),
-		Capabilities: []string{sdk.CapabilityPackageUpdates},
+		ConfigSchema: sdkplugin.MustConfigSchemaFor(config{}),
+		Capabilities: []string{sdkplugin.CapabilityPackageUpdates},
 		// Mirrors the coordinate mappings below. Anything outside this set has
 		// no ClearlyDefined coordinate to build, so it is skipped without a
 		// request — leaving this empty would read as "every ecosystem".
@@ -76,28 +79,28 @@ func descriptor() sdk.MatcherDescriptor {
 		//
 		// Still missing: go (go/golang), and the git and sourcearchive types,
 		// which are commit-addressed rather than version-addressed. See #7.
-		SupportedEcosystems: []sdk.Ecosystem{
-			sdk.EcosystemNPM,    // npm/npmjs
-			sdk.EcosystemMaven,  // maven/mavencentral
-			sdk.EcosystemScala,  // maven/mavencentral
-			sdk.EcosystemPython, // pypi/pypi
-			sdk.EcosystemDotNet, // nuget/nuget
-			sdk.EcosystemRuby,   // gem/rubygems
-			sdk.EcosystemRust,   // crate/cratesio
-			sdk.EcosystemPHP,    // composer/packagist
-			sdk.EcosystemDPKG,   // deb/debian
-			sdk.EcosystemSwift,  // pod/cocoapods
-			sdk.EcosystemConda,  // conda/{anaconda-main,anaconda-r,conda-forge}
+		SupportedEcosystems: []model.Ecosystem{
+			model.EcosystemNPM,    // npm/npmjs
+			model.EcosystemMaven,  // maven/mavencentral
+			model.EcosystemScala,  // maven/mavencentral
+			model.EcosystemPython, // pypi/pypi
+			model.EcosystemDotNet, // nuget/nuget
+			model.EcosystemRuby,   // gem/rubygems
+			model.EcosystemRust,   // crate/cratesio
+			model.EcosystemPHP,    // composer/packagist
+			model.EcosystemDPKG,   // deb/debian
+			model.EcosystemSwift,  // pod/cocoapods
+			model.EcosystemConda,  // conda/{anaconda-main,anaconda-r,conda-forge}
 		},
 	}
 }
 
 // Descriptor identifies the matcher to Bomly.
-func (m *Matcher) Descriptor() sdk.MatcherDescriptor { return descriptor() }
+func (m *Matcher) Descriptor() sdkplugin.MatcherDescriptor { return descriptor() }
 
 // Ready reports whether the matcher can run; an invalid configuration is
 // reported as the not-ready reason rather than a construction failure.
-func (m *Matcher) Ready(context.Context, sdk.MatchRequest) error {
+func (m *Matcher) Ready(context.Context, sdkplugin.MatchRequest) error {
 	if m.configErr != nil {
 		return fmt.Errorf("invalid clearlydefined matcher configuration: %w", m.configErr)
 	}
@@ -106,7 +109,7 @@ func (m *Matcher) Ready(context.Context, sdk.MatchRequest) error {
 
 // Applicable reports whether the request carries a graph and a package
 // registry to enrich.
-func (m *Matcher) Applicable(_ context.Context, req sdk.MatchRequest) (bool, error) {
+func (m *Matcher) Applicable(_ context.Context, req sdkplugin.MatchRequest) (bool, error) {
 	return req.Graph != nil && req.Registry != nil, nil
 }
 
@@ -120,30 +123,30 @@ func (m *Matcher) Applicable(_ context.Context, req sdk.MatchRequest) (bool, err
 // MergeFrom fills Licenses only when the package has none — exactly the
 // packages this matcher enriches — and ORs Matched in, so applying the deltas
 // reproduces the in-place enrichment.
-func (m *Matcher) Match(ctx context.Context, req sdk.MatchRequest) (sdk.MatchResult, error) {
+func (m *Matcher) Match(ctx context.Context, req sdkplugin.MatchRequest) (sdkplugin.MatchResult, error) {
 	useDeltas := req.AcceptPackageUpdates
 	if req.Registry == nil {
 		return matchResponse(nil, nil, useDeltas, 0, 0, 0), nil
 	}
 	if m.configErr != nil {
-		return sdk.MatchResult{}, fmt.Errorf("invalid clearlydefined matcher configuration: %w", m.configErr)
+		return sdkplugin.MatchResult{}, fmt.Errorf("invalid clearlydefined matcher configuration: %w", m.configErr)
 	}
 	cfg := m.config
 	client, err := m.httpClient()
 	if err != nil {
-		return sdk.MatchResult{}, err
+		return sdkplugin.MatchResult{}, err
 	}
 	cache := newFileCache(cfg.CacheDir, cfg.CacheTTL, cfg.DisableCache)
 	matchedPackages := 0
 	licenses := 0
 	unmatchedPackages := 0
-	var updates []*sdk.Package
-	record := func(pkg *sdk.Package, values []string) {
+	var updates []*model.Package
+	record := func(pkg *model.Package, values []string) {
 		count := 0
 		if useDeltas {
 			if built := buildLicenses(pkg, values); len(built) > 0 {
-				updates = append(updates, &sdk.Package{
-					Coordinates: sdk.Coordinates{PURL: pkg.PURL},
+				updates = append(updates, &model.Package{
+					Coordinates: model.Coordinates{PURL: pkg.PURL},
 					Matched:     true,
 					Licenses:    built,
 				})
@@ -182,16 +185,16 @@ func (m *Matcher) Match(ctx context.Context, req sdk.MatchRequest) (sdk.MatchRes
 	return matchResponse(req.Registry, updates, useDeltas, matchedPackages, unmatchedPackages, licenses), nil
 }
 
-func matchResponse(registry *sdk.PackageRegistry, updates []*sdk.Package, useDeltas bool, matchedPackages, unmatchedPackages, licenses int) sdk.MatchResult {
+func matchResponse(registry *model.PackageRegistry, updates []*model.Package, useDeltas bool, matchedPackages, unmatchedPackages, licenses int) sdkplugin.MatchResult {
 	if useDeltas {
 		registry = nil
 	} else {
 		updates = nil
 	}
-	return sdk.MatchResult{
+	return sdkplugin.MatchResult{
 		Registry:       registry,
 		PackageUpdates: updates,
-		MatcherStats: sdk.MatcherStats{
+		MatcherStats: sdkplugin.MatcherStats{
 			Name:              Name,
 			DisplayName:       "ClearlyDefined License Matcher",
 			MatchedPackages:   matchedPackages,
@@ -201,7 +204,7 @@ func matchResponse(registry *sdk.PackageRegistry, updates []*sdk.Package, useDel
 	}
 }
 
-func loadConfig(host sdk.HostContext) (config, error) {
+func loadConfig(host sdkplugin.HostContext) (config, error) {
 	cfg := config{
 		APIBase:  defaultAPIBase,
 		CacheDir: defaultCacheDir(),
@@ -233,7 +236,7 @@ func defaultCacheDir() string {
 func (m *Matcher) httpClient() (*http.Client, error) {
 	provider := m.http
 	if provider == nil {
-		created, err := sdk.NewHTTPClientProvider(sdk.HTTPClientConfig{})
+		created, err := httpkit.NewClientProvider(httpkit.ClientConfig{})
 		if err != nil {
 			return nil, err
 		}
@@ -245,12 +248,12 @@ func (m *Matcher) httpClient() (*http.Client, error) {
 // Module packages the matcher for both execution modes: Bomly can embed it
 // in-process or serve it as a managed plugin subprocess (see
 // cmd/bomly-plugin-clearlydefined-matcher).
-func Module() sdk.Module {
-	return sdk.Module{
-		Kind: sdk.PluginKindMatcher,
-		Matcher: &sdk.MatcherModule{
+func Module() sdkplugin.Module {
+	return sdkplugin.Module{
+		Kind: sdkplugin.PluginKindMatcher,
+		Matcher: &sdkplugin.MatcherModule{
 			Descriptor: descriptor(),
-			New: func(_ context.Context, host sdk.HostContext) (sdk.Matcher, error) {
+			New: func(_ context.Context, host sdkplugin.HostContext) (sdkplugin.Matcher, error) {
 				matcher := &Matcher{http: host.HTTPClient()}
 				matcher.config, matcher.configErr = loadConfig(host)
 				return matcher, nil
@@ -302,7 +305,7 @@ func fetchDefinition(ctx context.Context, client *http.Client, apiBase, coordina
 // provenance values ("declared" / "concluded") applies is not knowable without
 // a cache-format change; naming the component in Source is the fact this
 // matcher can actually state.
-func buildLicenses(pkg *sdk.Package, values []string) []sdk.PackageLicense {
+func buildLicenses(pkg *model.Package, values []string) []model.PackageLicense {
 	values = normalizeLicenseSet(values)
 	if pkg == nil || len(pkg.Licenses) > 0 || len(values) == 0 {
 		return nil
@@ -310,7 +313,7 @@ func buildLicenses(pkg *sdk.Package, values []string) []sdk.PackageLicense {
 	return matcherkit.NormalizeLicenseSetFrom(values, "", licenseSource)
 }
 
-func applyLicenses(pkg *sdk.Package, values []string) int {
+func applyLicenses(pkg *model.Package, values []string) int {
 	licenses := buildLicenses(pkg, values)
 	if len(licenses) == 0 {
 		return 0
@@ -344,7 +347,7 @@ func normalizeLicenseSet(values []string) []string {
 	return out
 }
 
-func coordinateFromPackage(pkg *sdk.Package) (string, bool) {
+func coordinateFromPackage(pkg *model.Package) (string, bool) {
 	if pkg == nil || strings.TrimSpace(pkg.Version) == "" {
 		return "", false
 	}
@@ -361,7 +364,7 @@ func coordinateFromPackage(pkg *sdk.Package) (string, bool) {
 	return coordinateFromGraphPackage(pkg)
 }
 
-func coordinateFromGraphPackage(pkg *sdk.Package) (string, bool) {
+func coordinateFromGraphPackage(pkg *model.Package) (string, bool) {
 	name := strings.TrimSpace(pkg.Name)
 	org := strings.TrimSpace(pkg.Org)
 	version := strings.TrimSpace(pkg.Version)
