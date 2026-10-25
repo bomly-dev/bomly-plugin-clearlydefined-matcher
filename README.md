@@ -56,6 +56,18 @@ plugins:
 
 The plugin honors Bomly's proxy environment passed to external plugins.
 
+## Access
+
+`bomly-plugin.json` declares what the matcher touches, which Bomly shows when you install it and in `bomly plugin info`. It is a disclosure, not a sandbox.
+
+| Access | Why |
+| --- | --- |
+| Reads and writes `home` | The definition cache, `~/.bomly/cache/licenses/clearlydefined` by default |
+| Network `api.clearlydefined.io` | The ClearlyDefined definitions API the matcher queries, the default `api_base` |
+| Environment `HOME`, `USERPROFILE` | `os.UserHomeDir` reads `HOME` (`USERPROFILE` on Windows) to locate the default cache directory |
+
+Setting `cache_dir` or `api_base` moves the cache or the API to a place you chose; the declaration describes the defaults. Proxy settings arrive through the HTTP client Bomly hands the plugin and are not declared.
+
 ## What the plugin writes
 
 The plugin only fills packages that have no license yet. For each such package
