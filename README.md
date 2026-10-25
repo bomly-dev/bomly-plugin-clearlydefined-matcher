@@ -66,7 +66,7 @@ The plugin honors Bomly's proxy environment passed to external plugins.
 | Network `api.clearlydefined.io` | The ClearlyDefined definitions API the matcher queries, the default `api_base` |
 | Environment `HOME`, `USERPROFILE` | `os.UserHomeDir` reads `HOME` (`USERPROFILE` on Windows) to locate the default cache directory |
 
-Setting `cache_dir` or `api_base` moves the cache or the API to a place you chose; the declaration describes the defaults. Proxy settings arrive through the HTTP client Bomly hands the plugin and are not declared.
+Setting `cache_dir` or `api_base` moves the cache or the API to a place you chose; the declaration describes the defaults. If Bomly cannot find your home directory, the cache falls back to `.bomly-cache/licenses/clearlydefined` in the directory Bomly runs in, which the access block does not cover ([bomly-planning#115](https://github.com/bomly-dev/bomly-planning/issues/115)). Proxy settings arrive through the HTTP client Bomly hands the plugin and are not declared.
 
 ## What the plugin writes
 
