@@ -15,5 +15,20 @@
   "source": "github:bomly-dev/bomly-plugin-clearlydefined-matcher@v0.1.14",
   "homepage": "https://github.com/bomly-dev/bomly-plugin-clearlydefined-matcher",
   "license": "Apache-2.0",
-  "description": "External matcher plugin that enriches package license data from ClearlyDefined."
+  "description": "External matcher plugin that enriches package license data from ClearlyDefined.",
+  "access": {
+    "filesystemRead": [
+      "home"
+    ],
+    "filesystemWrite": [
+      "home"
+    ],
+    "network": [
+      "api.clearlydefined.io"
+    ],
+    "environment": [
+      "HOME",
+      "USERPROFILE"
+    ]
+  }
 }
