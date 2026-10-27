@@ -362,6 +362,16 @@ func TestNoHomeDirectoryRunsWithoutACache(t *testing.T) {
 	if _, ok := cache.get("pkg:npm/a@1.0.0"); ok {
 		t.Error("the disabled cache returned a value")
 	}
+
+	// And through Match itself: the uncached matcher still enriches.
+	server := newLicenseServer(t)
+	registry := newLicenseRegistry()
+	if _, err := newMatcher(t, json.RawMessage(`{"api_base":"`+server.URL+`"}`)).Match(context.Background(), sdkplugin.MatchRequest{Registry: registry, Graph: model.New()}); err != nil {
+		t.Fatalf("Match without a cache: %v", err)
+	}
+	if pkg, _ := registry.Get("pkg:composer/acme/widget@1.2.3"); pkg == nil || len(pkg.Licenses) == 0 {
+		t.Error("the uncached matcher did not enrich the package ClearlyDefined knows")
+	}
 	if entries, _ := os.ReadDir(cwd); len(entries) != 0 {
 		t.Errorf("the matcher wrote %d entries into the working directory", len(entries))
 	}
