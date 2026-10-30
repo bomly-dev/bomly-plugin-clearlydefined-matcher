@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bomly-dev/bomly-sdk/filecache"
 	"github.com/bomly-dev/bomly-sdk/matcherkit"
 	"github.com/bomly-dev/bomly-sdk/purlkit"
 
@@ -225,12 +226,16 @@ func loadConfig(host sdkplugin.HostContext) (config, error) {
 	return cfg, nil
 }
 
+// defaultCacheDir returns ~/.bomly/cache/licenses/clearlydefined, or "" --
+// which runs the matcher without a cache -- when there is no home directory.
+// It never falls back to a path relative to the working directory, which no
+// access declaration describes (bomly-planning#115).
 func defaultCacheDir() string {
-	home, err := os.UserHomeDir()
+	dir, err := filecache.DefaultDir("licenses", "clearlydefined")
 	if err != nil {
-		return filepath.Join(".bomly-cache", "licenses", "clearlydefined")
+		return ""
 	}
-	return filepath.Join(home, ".bomly", "cache", "licenses", "clearlydefined")
+	return dir
 }
 
 func (m *Matcher) httpClient() (*http.Client, error) {
